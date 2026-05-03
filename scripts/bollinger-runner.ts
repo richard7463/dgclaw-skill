@@ -183,7 +183,7 @@ async function closePosition(exchange: ExchangeClient, info: InfoClient, user: `
   const mids = await info.allMids();
   const midPrice = parseFloat(mids[PAIR]);
   const posSize = parseFloat(position.position.szi);
-  const orderPrice = posSize > 0 ? (midPrice * 0.99).toPrecision(6) : (midPrice * 1.01).toPrecision(6);
+  const orderPrice = posSize > 0 ? (midPrice * 0.99).toFixed(2) : (midPrice * 1.01).toFixed(2);
   const size = Math.abs(posSize).toString();
   const closeIsBuy = posSize < 0;
   const result = await exchange.order({
@@ -225,8 +225,8 @@ async function buildSignal(info: InfoClient) {
       side: 'long' as const,
       basis,
       outerBand: lower,
-      stopLoss: Math.min(lower * (1 - STOP_BUFFER), close * (1 - STOP_BUFFER)),
-      takeProfit: Math.max(basis, close * (1 + TARGET_BUFFER)),
+      stopLoss: Math.min(lower * (1 - STOP_BUFFER), close * (1 - STOP_BUFFER)).toFixed(2),
+      takeProfit: Math.max(basis, close * (1 + TARGET_BUFFER)).toFixed(2),
     };
   }
 
@@ -236,8 +236,8 @@ async function buildSignal(info: InfoClient) {
       side: 'short' as const,
       basis,
       outerBand: upper,
-      stopLoss: Math.max(upper * (1 + STOP_BUFFER), close * (1 + STOP_BUFFER)),
-      takeProfit: Math.min(basis, close * (1 - TARGET_BUFFER)),
+      stopLoss: Math.max(upper * (1 + STOP_BUFFER), close * (1 + STOP_BUFFER)).toFixed(2),
+      takeProfit: Math.min(basis, close * (1 - TARGET_BUFFER)).toFixed(2),
     };
   }
 
@@ -314,8 +314,8 @@ async function evaluateOnce() {
         entryPx,
         size,
         leverage: parseFloat(pos.leverage?.value ?? '0'),
-        stopLoss: side === 'long' ? entryPx * (1 - STOP_BUFFER) : entryPx * (1 + STOP_BUFFER),
-        takeProfit: side === 'long' ? entryPx * (1 + TARGET_BUFFER) : entryPx * (1 - TARGET_BUFFER),
+        stopLoss: (side === 'long' ? entryPx * (1 - STOP_BUFFER) : entryPx * (1 + STOP_BUFFER)).toFixed(2),
+        takeProfit: (side === 'long' ? entryPx * (1 + TARGET_BUFFER) : entryPx * (1 - TARGET_BUFFER)).toFixed(2),
         stopMovedToBreakeven: false,
         basis: entryPx,
         outerBand: entryPx,
@@ -328,7 +328,7 @@ async function evaluateOnce() {
     const openTrade = state.openTrade;
     const midPrice = await getMidPrice(info);
     if (!openTrade.stopMovedToBreakeven && roe >= BREAK_EVEN_ROE) {
-      openTrade.stopLoss = openTrade.entryPx;
+      openTrade.stopLoss = parseFloat(String(openTrade.entryPx)).toFixed(2);
       openTrade.stopMovedToBreakeven = true;
       await postSignal(
         `Moved ${PAIR} ${openTrade.side} stop to breakeven`,
@@ -336,8 +336,8 @@ async function evaluateOnce() {
       );
     }
 
-    const hitTakeProfit = openTrade.side === 'long' ? midPrice >= openTrade.takeProfit : midPrice <= openTrade.takeProfit;
-    const hitStopLoss = openTrade.side === 'long' ? midPrice <= openTrade.stopLoss : midPrice >= openTrade.stopLoss;
+    const hitTakeProfit = openTrade.side === 'long' ? midPrice >= parseFloat(String(openTrade.takeProfit)) : midPrice <= parseFloat(String(openTrade.takeProfit));
+    const hitStopLoss = openTrade.side === 'long' ? midPrice <= parseFloat(String(openTrade.stopLoss)) : midPrice >= parseFloat(String(openTrade.stopLoss));
 
     if (hitTakeProfit || hitStopLoss || Date.now() - openTrade.openedAt >= TIMEOUT_MS) {
       const closeResult = await closePosition(exchange, info, user, assetId);
@@ -379,7 +379,7 @@ async function evaluateOnce() {
   const sizeNum = notional / midPrice;
   const size = sizeNum.toFixed(meta.szDecimals);
   const isLong = signal.side === 'long';
-  const orderPrice = isLong ? (midPrice * 1.01).toPrecision(6) : (midPrice * 0.99).toPrecision(6);
+  const orderPrice = isLong ? (midPrice * 1.01).toFixed(2) : (midPrice * 0.99).toFixed(2);
   await exchange.updateLeverage({ asset: assetId, isCross: true, leverage });
 
   const result = await exchange.order({

@@ -261,7 +261,7 @@ async function closePosition(exchange: ExchangeClient, info: InfoClient, user: `
   const mids = await info.allMids();
   const midPrice = parseFloat(mids[PAIR]);
   const posSize = parseFloat(position.position.szi);
-  const orderPrice = (midPrice * 0.99).toPrecision(6);
+  const orderPrice = (midPrice * 0.99).toFixed(2);
   const size = Math.abs(posSize).toString();
   const result = await exchange.order({
     orders: [{ a: assetId, b: false, r: true, p: orderPrice, s: size, t: { limit: { tif: 'Ioc' } } }],
@@ -394,15 +394,15 @@ async function evaluateOnce() {
         entryPx,
         size,
         leverage: parseFloat(pos.leverage?.value ?? '0'),
-        stopLoss: entryPx * STOP_LOSS_MULTIPLIER,
-        takeProfit: entryPx * TAKE_PROFIT_MULTIPLIER,
+        stopLoss: (entryPx * STOP_LOSS_MULTIPLIER).toFixed(2),
+        takeProfit: (entryPx * TAKE_PROFIT_MULTIPLIER).toFixed(2),
         stopMovedToBreakeven: false,
         signalHigh: entryPx,
         notional: parseFloat(pos.positionValue ?? '0'),
       };
       const existingOrders = await getOpenTriggerOrders(info, user);
       if (existingOrders.length < 2) {
-        await placeBrackets(exchange, info, user, assetId, size, state.openTrade.stopLoss, state.openTrade.takeProfit);
+        await placeBrackets(exchange, info, user, assetId, size, parseFloat(String(state.openTrade.stopLoss)), parseFloat(String(state.openTrade.takeProfit)));
         console.log(`[100xmira] adopted existing ${PAIR} long and attached brackets.`);
       } else {
         console.log(`[100xmira] adopted existing ${PAIR} long with ${existingOrders.length} existing reduce-only orders.`);
@@ -415,7 +415,7 @@ async function evaluateOnce() {
     if (!openTrade.stopMovedToBreakeven && roe >= BREAK_EVEN_ROE) {
       openTrade.stopLoss = openTrade.entryPx;
       openTrade.stopMovedToBreakeven = true;
-      await placeBrackets(exchange, info, user, assetId, size, openTrade.stopLoss, openTrade.takeProfit);
+      await placeBrackets(exchange, info, user, assetId, size, parseFloat(String(openTrade.stopLoss)), parseFloat(String(openTrade.takeProfit)));
       await postSignal(
         `Moved ${PAIR} stop to breakeven`,
         `Trade moved in favor. ${PAIR} long stop loss raised to breakeven at ${openTrade.entryPx.toFixed(2)}. Leverage ${openTrade.leverage}x.`,
@@ -433,7 +433,7 @@ async function evaluateOnce() {
     } else {
       const openOrders = await getOpenTriggerOrders(info, user);
       if (openOrders.length < 2) {
-        await placeBrackets(exchange, info, user, assetId, size, openTrade.stopLoss, openTrade.takeProfit);
+        await placeBrackets(exchange, info, user, assetId, size, parseFloat(String(openTrade.stopLoss)), parseFloat(String(openTrade.takeProfit)));
       }
       saveState(state);
       console.log(JSON.stringify({ action: 'manage', pair: PAIR, roe, stopMovedToBreakeven: openTrade.stopMovedToBreakeven }, null, 2));
@@ -471,7 +471,7 @@ async function evaluateOnce() {
   const midPrice = parseFloat(mids[PAIR]);
   const sizeNum = notional / midPrice;
   const size = sizeNum.toFixed(meta.szDecimals);
-  const orderPrice = (midPrice * 1.01).toPrecision(6);
+  const orderPrice = (midPrice * 1.01).toFixed(2);
   await exchange.updateLeverage({ asset: assetId, isCross: true, leverage: actualLeverage });
 
   const result = await exchange.order({
