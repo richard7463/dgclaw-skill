@@ -6,6 +6,7 @@
   "scripts": {
     "add-api-wallet": "tsx scripts/add-api-wallet.ts",
     "apex-liquid": "tsx scripts/apex-liquid-runner.ts",
+    "chanlun": "tsx scripts/chanlun-runner.ts",
     "trade": "tsx scripts/trade.ts",
     "100xmira": "tsx scripts/100xmira-runner.ts",
     "100xshort": "tsx scripts/100xshort-runner.ts"
