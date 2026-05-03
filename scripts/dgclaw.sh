@@ -57,10 +57,14 @@ fund_acp_job() {
     status_response=$(acp_cmd job history --chain-id 8453 --job-id "$job_id" --json 2>/dev/null || echo '{}')
 
     phase=$(echo "$status_response" | jq -r '
-      if type == "array" then .[0] else . end
-      | if .memoHistory and (.memoHistory | length > 0)
-        then .memoHistory | sort_by(.createdAt) | last | .nextPhase // "PENDING"
-        else .status // .phase // "PENDING"
+      def root: if type == "array" then .[0] else . end;
+      root
+      | if .memoHistory and (.memoHistory | length > 0) then
+          .memoHistory | sort_by(.createdAt) | last | .nextPhase // "PENDING"
+        elif .entries and (.entries | length > 0) then
+          .status // .phase // "PENDING"
+        else
+          .status // .phase // "PENDING"
         end')
 
     case "$phase" in
@@ -78,8 +82,14 @@ fund_acp_job() {
     # Look for the trigger string anywhere in any memo (content/message/etc).
     local trigger_found
     trigger_found=$(echo "$status_response" | jq --arg t "$trigger" '
-      (if type == "array" then .[0] else . end)
-      | .memoHistory // []
+      def root: if type == "array" then .[0] else . end;
+      (
+        root
+        | (
+            (.memoHistory // [])
+            + (.entries // [])
+          )
+      )
       | [.. | strings | select(contains($t))]
       | length > 0' 2>/dev/null || echo "false")
 
@@ -124,10 +134,12 @@ poll_acp_job() {
     # The top-level phase field is unreliable (stays NEGOTIATION).
     # Check memoHistory for the latest nextPhase to determine actual state.
     latest_phase=$(echo "$status_response" | jq -r '
-      if type == "array" then .[0] else . end
-      | if .memoHistory and (.memoHistory | length > 0)
-        then .memoHistory | sort_by(.createdAt) | last | .nextPhase // "PENDING"
-        else .status // .phase // "PENDING"
+      def root: if type == "array" then .[0] else . end;
+      root
+      | if .memoHistory and (.memoHistory | length > 0) then
+          .memoHistory | sort_by(.createdAt) | last | .nextPhase // "PENDING"
+        else
+          .status // .phase // "PENDING"
         end
     ')
 

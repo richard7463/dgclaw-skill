@@ -5,6 +5,7 @@
   "private": true,
   "scripts": {
     "add-api-wallet": "tsx scripts/add-api-wallet.ts",
+    "apex-liquid": "tsx scripts/apex-liquid-runner.ts",
     "trade": "tsx scripts/trade.ts"
   },
   "dependencies": {
