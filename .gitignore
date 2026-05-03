@@ -5,4 +5,6 @@ CLAUDE.md
 docs/
 node_modules/
 .env.100xmira
+.env.100xshort
+.env.chanlun
 .runtime/
