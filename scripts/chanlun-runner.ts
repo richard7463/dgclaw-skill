@@ -23,6 +23,8 @@ const BREAK_EVEN_ROE = parseFloat(process.env.CHANLUN_BREAK_EVEN_ROE ?? '0.003')
 const TIMEOUT_MS = parseInt(process.env.CHANLUN_TIMEOUT_MS ?? String(45 * 60 * 1000), 10);
 const STOP_BUFFER = parseFloat(process.env.CHANLUN_STOP_BUFFER ?? '0.0018');
 const TARGET_BUFFER = parseFloat(process.env.CHANLUN_TARGET_BUFFER ?? '0.0045');
+const VOLUME_MULTIPLIER = parseFloat(process.env.CHANLUN_VOLUME_MULTIPLIER ?? '0.85');
+const PIVOT_FALLBACK_LOOKBACK = parseInt(process.env.CHANLUN_PIVOT_FALLBACK_LOOKBACK ?? '12', 10);
 const COOLDOWN_AFTER_LOSS_MINUTES = parseInt(process.env.CHANLUN_COOLDOWN_AFTER_LOSS_MINUTES ?? '45', 10);
 const DAILY_LOSS_LIMIT = parseFloat(process.env.CHANLUN_DAILY_LOSS_LIMIT ?? '0.05');
 const DGCLAW_AGENT_ID = process.env.DGCLAW_AGENT_ID ?? '990';
@@ -161,14 +163,29 @@ function detectTrend(swings30m: Swing[]) {
   return null;
 }
 
-function derivePivotZone(swings5m: Swing[]) {
+function derivePivotZone(swings5m: Swing[], candles5m: Candle[]) {
   const highs = lastN(swings5m.filter((s) => s.kind === 'high'), 3);
   const lows = lastN(swings5m.filter((s) => s.kind === 'low'), 3);
-  if (highs.length < 3 || lows.length < 3) return null;
-  const zoneHigh = Math.min(...highs.map((s) => s.price));
-  const zoneLow = Math.max(...lows.map((s) => s.price));
-  if (zoneLow >= zoneHigh) return null;
-  return { zoneHigh, zoneLow, lastHigh: highs[2].price, lastLow: lows[2].price };
+  if (highs.length >= 3 && lows.length >= 3) {
+    const zoneHigh = Math.min(...highs.map((s) => s.price));
+    const zoneLow = Math.max(...lows.map((s) => s.price));
+    if (zoneLow < zoneHigh) {
+      return { zoneHigh, zoneLow, lastHigh: highs[2].price, lastLow: lows[2].price };
+    }
+  }
+
+  const recent = candles5m.slice(-PIVOT_FALLBACK_LOOKBACK);
+  if (recent.length < 6) return null;
+  const recentHigh = Math.max(...recent.map((c) => parseFloat(c.h)));
+  const recentLow = Math.min(...recent.map((c) => parseFloat(c.l)));
+  const width = recentHigh - recentLow;
+  if (width <= 0) return null;
+  return {
+    zoneLow: recentLow + width * 0.35,
+    zoneHigh: recentLow + width * 0.65,
+    lastHigh: recentHigh,
+    lastLow: recentLow,
+  };
 }
 
 async function postSignal(title: string, content: string) {
@@ -308,7 +325,7 @@ async function buildSignal(info: InfoClient): Promise<StructureSignal> {
   if (!trend) return { ok: false, reason: 'no clear 30m structure trend' };
 
   const swings5m = findSwings(candles5m);
-  const pivot = derivePivotZone(swings5m);
+  const pivot = derivePivotZone(swings5m, candles5m);
   if (!pivot) return { ok: false, reason: 'no valid 5m pivot zone' };
 
   const recentCandles = candles5m.slice(-6);
@@ -316,7 +333,7 @@ async function buildSignal(info: InfoClient): Promise<StructureSignal> {
   const currentClose = parseFloat(current.c);
   const avgVolume = average(recentCandles.map((c) => parseFloat(c.v)));
   const currentVolume = parseFloat(current.v);
-  if (currentVolume < avgVolume * 1.1) {
+  if (currentVolume < avgVolume * VOLUME_MULTIPLIER) {
     return { ok: false, reason: 'weak confirmation volume' };
   }
 

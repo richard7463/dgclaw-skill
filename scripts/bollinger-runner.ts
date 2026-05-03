@@ -14,15 +14,17 @@ const transport = new HttpTransport({ url: HL_API_URL });
 
 const PAIR = process.env.BOLLINGER_PAIR ?? 'ETH';
 const POLL_SECONDS = parseInt(process.env.BOLLINGER_POLL_SECONDS ?? '60', 10);
-const PERIOD = parseInt(process.env.BOLLINGER_PERIOD ?? '20', 10);
+const PERIOD = parseInt(process.env.BOLLINGER_PERIOD ?? '18', 10);
 const STDDEV = parseFloat(process.env.BOLLINGER_STDDEV ?? '2');
-const MARGIN_FRACTION = parseFloat(process.env.BOLLINGER_MARGIN_FRACTION ?? '0.3');
+const MARGIN_FRACTION = parseFloat(process.env.BOLLINGER_MARGIN_FRACTION ?? '0.35');
 const MAX_MARGIN_USDC = parseFloat(process.env.BOLLINGER_MAX_MARGIN_USDC ?? '10');
-const MIN_NOTIONAL = parseFloat(process.env.BOLLINGER_MIN_NOTIONAL ?? '12');
+const MIN_NOTIONAL = parseFloat(process.env.BOLLINGER_MIN_NOTIONAL ?? '8');
 const MAX_NOTIONAL_USDC = parseFloat(process.env.BOLLINGER_MAX_NOTIONAL_USDC ?? '180');
-const BASE_LEVERAGE = parseFloat(process.env.BOLLINGER_BASE_LEVERAGE ?? '3');
+const BASE_LEVERAGE = parseFloat(process.env.BOLLINGER_BASE_LEVERAGE ?? '4');
 const STOP_BUFFER = parseFloat(process.env.BOLLINGER_STOP_BUFFER ?? '0.0025');
-const TARGET_BUFFER = parseFloat(process.env.BOLLINGER_TARGET_BUFFER ?? '0.003');
+const TARGET_BUFFER = parseFloat(process.env.BOLLINGER_TARGET_BUFFER ?? '0.0025');
+const VOLUME_MULTIPLIER = parseFloat(process.env.BOLLINGER_VOLUME_MULTIPLIER ?? '0.6');
+const REENTRY_TOLERANCE = parseFloat(process.env.BOLLINGER_REENTRY_TOLERANCE ?? '0.0015');
 const BREAK_EVEN_ROE = parseFloat(process.env.BOLLINGER_BREAK_EVEN_ROE ?? '0.002');
 const TIMEOUT_MS = parseInt(process.env.BOLLINGER_TIMEOUT_MS ?? String(30 * 60 * 1000), 10);
 const COOLDOWN_AFTER_LOSS_MINUTES = parseInt(process.env.BOLLINGER_COOLDOWN_AFTER_LOSS_MINUTES ?? '30', 10);
@@ -175,58 +177,6 @@ async function getCurrentPosition(info: InfoClient, user: `0x${string}`) {
   return state.assetPositions.find((p: any) => p.position.coin?.toUpperCase() === PAIR && parseFloat(p.position.szi) !== 0) ?? null;
 }
 
-async function getOpenTriggerOrders(info: InfoClient, user: `0x${string}`) {
-  const orders = await info.openOrders({ user });
-  return orders.filter((order: any) => order.coin?.toUpperCase() === PAIR && order.reduceOnly === true);
-}
-
-async function cancelOpenTriggerOrders(exchange: ExchangeClient, info: InfoClient, user: `0x${string}`, assetId: number) {
-  const orders = await getOpenTriggerOrders(info, user);
-  for (const order of orders) {
-    try {
-      await exchange.cancel({ cancels: [{ a: assetId, o: order.oid }] });
-    } catch {
-      // ignore stale orders
-    }
-  }
-}
-
-async function placeBrackets(
-  exchange: ExchangeClient,
-  info: InfoClient,
-  user: `0x${string}`,
-  assetId: number,
-  side: 'long' | 'short',
-  size: string,
-  stopLoss: number,
-  takeProfit: number,
-) {
-  await cancelOpenTriggerOrders(exchange, info, user, assetId);
-  const closeIsBuy = side === 'short';
-  await exchange.order({
-    orders: [{
-      a: assetId,
-      b: closeIsBuy,
-      r: true,
-      p: takeProfit.toFixed(2),
-      s: size,
-      t: { trigger: { triggerPx: takeProfit.toFixed(2), isMarket: true, tpsl: 'tp' } },
-    }],
-    grouping: 'na',
-  });
-  await exchange.order({
-    orders: [{
-      a: assetId,
-      b: closeIsBuy,
-      r: true,
-      p: stopLoss.toFixed(2),
-      s: size,
-      t: { trigger: { triggerPx: stopLoss.toFixed(2), isMarket: true, tpsl: 'sl' } },
-    }],
-    grouping: 'na',
-  });
-}
-
 async function closePosition(exchange: ExchangeClient, info: InfoClient, user: `0x${string}`, assetId: number) {
   const position = await getCurrentPosition(info, user);
   if (!position) return null;
@@ -241,6 +191,11 @@ async function closePosition(exchange: ExchangeClient, info: InfoClient, user: `
     grouping: 'na',
   });
   return { result, midPrice, size };
+}
+
+async function getMidPrice(info: InfoClient) {
+  const mids = await info.allMids();
+  return parseFloat(mids[PAIR]);
 }
 
 async function buildSignal(info: InfoClient) {
@@ -260,11 +215,11 @@ async function buildSignal(info: InfoClient) {
   const currentVolume = parseFloat(candles[candles.length - 1].v);
   const avgVolume = average(candles.slice(-10, -1).map((c) => parseFloat(c.v)));
 
-  if (currentVolume < avgVolume * 0.8) {
+  if (currentVolume < avgVolume * VOLUME_MULTIPLIER) {
     return { ok: false as const, reason: 'thin confirmation volume' };
   }
 
-  if (prevClose < lower && close > lower) {
+  if (prevClose <= lower * (1 + REENTRY_TOLERANCE) && close >= lower * (1 - REENTRY_TOLERANCE)) {
     return {
       ok: true as const,
       side: 'long' as const,
@@ -275,7 +230,7 @@ async function buildSignal(info: InfoClient) {
     };
   }
 
-  if (prevClose > upper && close < upper) {
+  if (prevClose >= upper * (1 - REENTRY_TOLERANCE) && close <= upper * (1 + REENTRY_TOLERANCE)) {
     return {
       ok: true as const,
       side: 'short' as const,
@@ -365,40 +320,37 @@ async function evaluateOnce() {
         basis: entryPx,
         outerBand: entryPx,
       };
-      const existingOrders = await getOpenTriggerOrders(info, user);
-      if (existingOrders.length < 2) {
-        await placeBrackets(exchange, info, user, assetId, side, size, state.openTrade.stopLoss, state.openTrade.takeProfit);
-      }
       saveState(state);
+      console.log(JSON.stringify({ action: 'manage', adopted: true, pair: PAIR, side }, null, 2));
       return;
     }
 
     const openTrade = state.openTrade;
+    const midPrice = await getMidPrice(info);
     if (!openTrade.stopMovedToBreakeven && roe >= BREAK_EVEN_ROE) {
       openTrade.stopLoss = openTrade.entryPx;
       openTrade.stopMovedToBreakeven = true;
-      await placeBrackets(exchange, info, user, assetId, openTrade.side, size, openTrade.stopLoss, openTrade.takeProfit);
       await postSignal(
         `Moved ${PAIR} ${openTrade.side} stop to breakeven`,
         `Trade moved in favor. ${PAIR} ${openTrade.side} stop moved to breakeven at ${openTrade.entryPx.toFixed(2)}.`,
       );
     }
 
-    if (Date.now() - openTrade.openedAt >= TIMEOUT_MS) {
+    const hitTakeProfit = openTrade.side === 'long' ? midPrice >= openTrade.takeProfit : midPrice <= openTrade.takeProfit;
+    const hitStopLoss = openTrade.side === 'long' ? midPrice <= openTrade.stopLoss : midPrice >= openTrade.stopLoss;
+
+    if (hitTakeProfit || hitStopLoss || Date.now() - openTrade.openedAt >= TIMEOUT_MS) {
       const closeResult = await closePosition(exchange, info, user, assetId);
+      const reason = hitTakeProfit ? 'tp' : hitStopLoss ? 'sl' : 'timeout';
       await postSignal(
-        `Closed ${PAIR} ${openTrade.side} (timeout)`,
-        `Closed ${PAIR} ${openTrade.side} after timeout. Entry ${openTrade.entryPx.toFixed(2)}. Size ${openTrade.size}.`,
+        `Closed ${PAIR} ${openTrade.side} (${reason})`,
+        `Closed ${PAIR} ${openTrade.side}. Entry ${openTrade.entryPx.toFixed(2)}. Size ${openTrade.size}. Reason: ${reason}.`,
       );
       state.lastProcessedFillTime = Date.now();
-      console.log(JSON.stringify({ action: 'timeout-close', closeResult }, null, 2));
+      console.log(JSON.stringify({ action: 'software-close', reason, midPrice, closeResult }, null, 2));
     } else {
-      const openOrders = await getOpenTriggerOrders(info, user);
-      if (openOrders.length < 2) {
-        await placeBrackets(exchange, info, user, assetId, openTrade.side, size, openTrade.stopLoss, openTrade.takeProfit);
-      }
       saveState(state);
-      console.log(JSON.stringify({ action: 'manage', pair: PAIR, side: openTrade.side, roe }, null, 2));
+      console.log(JSON.stringify({ action: 'manage', pair: PAIR, side: openTrade.side, roe, midPrice }, null, 2));
       return;
     }
 
@@ -438,8 +390,6 @@ async function evaluateOnce() {
   const filled = result?.response?.data?.statuses?.find((status: any) => status.filled)?.filled;
   const entryPx = parseFloat(filled?.avgPx ?? midPrice.toString());
   const filledSize = filled?.totalSz ?? size;
-
-  await placeBrackets(exchange, info, user, assetId, signal.side, filledSize, signal.stopLoss, signal.takeProfit);
 
   state.openTrade = {
     pair: PAIR,

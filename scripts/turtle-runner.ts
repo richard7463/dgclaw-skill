@@ -14,16 +14,17 @@ const transport = new HttpTransport({ url: HL_API_URL });
 
 const PAIR = process.env.TURTLE_PAIR ?? 'ETH';
 const POLL_SECONDS = parseInt(process.env.TURTLE_POLL_SECONDS ?? '60', 10);
-const ENTRY_LOOKBACK = parseInt(process.env.TURTLE_ENTRY_LOOKBACK ?? '20', 10);
-const EXIT_LOOKBACK = parseInt(process.env.TURTLE_EXIT_LOOKBACK ?? '10', 10);
-const TREND_LOOKBACK = parseInt(process.env.TURTLE_TREND_LOOKBACK ?? '55', 10);
+const ENTRY_LOOKBACK = parseInt(process.env.TURTLE_ENTRY_LOOKBACK ?? '16', 10);
+const EXIT_LOOKBACK = parseInt(process.env.TURTLE_EXIT_LOOKBACK ?? '8', 10);
+const TREND_LOOKBACK = parseInt(process.env.TURTLE_TREND_LOOKBACK ?? '34', 10);
 const MARGIN_FRACTION = parseFloat(process.env.TURTLE_MARGIN_FRACTION ?? '0.35');
 const MAX_MARGIN_USDC = parseFloat(process.env.TURTLE_MAX_MARGIN_USDC ?? '12');
-const MIN_NOTIONAL = parseFloat(process.env.TURTLE_MIN_NOTIONAL ?? '15');
+const MIN_NOTIONAL = parseFloat(process.env.TURTLE_MIN_NOTIONAL ?? '12');
 const MAX_NOTIONAL_USDC = parseFloat(process.env.TURTLE_MAX_NOTIONAL_USDC ?? '250');
 const BASE_LEVERAGE = parseFloat(process.env.TURTLE_BASE_LEVERAGE ?? '4');
 const STOP_BUFFER = parseFloat(process.env.TURTLE_STOP_BUFFER ?? '0.0025');
-const TARGET_BUFFER = parseFloat(process.env.TURTLE_TARGET_BUFFER ?? '0.008');
+const TARGET_BUFFER = parseFloat(process.env.TURTLE_TARGET_BUFFER ?? '0.006');
+const VOLUME_MULTIPLIER = parseFloat(process.env.TURTLE_VOLUME_MULTIPLIER ?? '0.8');
 const BREAK_EVEN_ROE = parseFloat(process.env.TURTLE_BREAK_EVEN_ROE ?? '0.0035');
 const TIMEOUT_MS = parseInt(process.env.TURTLE_TIMEOUT_MS ?? String(45 * 60 * 1000), 10);
 const COOLDOWN_AFTER_LOSS_MINUTES = parseInt(process.env.TURTLE_COOLDOWN_AFTER_LOSS_MINUTES ?? '60', 10);
@@ -264,7 +265,7 @@ async function buildSignal(info: InfoClient) {
   const volume = parseFloat(signalBar.v);
   const avgVolume = average(candles15m.slice(-10, -1).map((c) => parseFloat(c.v)));
 
-  if (volume < avgVolume * 1.05) {
+  if (volume < avgVolume * VOLUME_MULTIPLIER) {
     return { ok: false as const, reason: 'weak breakout volume' };
   }
 
