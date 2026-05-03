@@ -105,6 +105,10 @@ function stddev(values: number[]) {
   return Math.sqrt(average(values.map((value) => (value - mean) ** 2)));
 }
 
+function fmtPx(price: unknown): string {
+  return typeof price === 'string' ? price : (Number(price) || 0).toFixed(2);
+}
+
 function getDayKey(ts = Date.now()) {
   return new Date(ts).toISOString().slice(0, 10);
 }
@@ -407,7 +411,7 @@ async function evaluateOnce() {
 
   await postSignal(
     `Opened ${PAIR} ${signal.side}`,
-    `Opened ${PAIR} ${signal.side}. Entry ${entryPx.toFixed(2)}. Size ${filledSize}. Leverage ${leverage}x. Basis ${signal.basis.toFixed(2)}. Outer band ${signal.outerBand.toFixed(2)}. TP ${signal.takeProfit.toFixed(2)}. SL ${signal.stopLoss.toFixed(2)}.`,
+    `Opened ${PAIR} ${signal.side}. Entry ${entryPx.toFixed(2)}. Size ${filledSize}. Leverage ${leverage}x. Basis ${signal.basis.toFixed(2)}. Outer band ${signal.outerBand.toFixed(2)}. TP ${signal.takeProfit}. SL ${signal.stopLoss}.`,
   );
 
   console.log(JSON.stringify({ action: 'open', pair: PAIR, side: signal.side, entryPx, size: filledSize, result }, null, 2));
