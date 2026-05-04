@@ -21,7 +21,8 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SKILL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 ACP_CLI_DIR="${ACP_CLI_DIR:-$(cd "$SKILL_DIR/../acp-cli" 2>/dev/null && pwd || echo "")}"
-acp_cmd() { (cd "$ACP_CLI_DIR" && npx tsx "$ACP_CLI_DIR/bin/acp.ts" "$@"); }
+NODE22_BIN="${NODE22_BIN:-/usr/local/opt/node@22/bin}"
+acp_cmd() { (cd "$ACP_CLI_DIR" && PATH="$NODE22_BIN:$PATH" ./node_modules/.bin/tsx bin/acp.ts "$@"); }
 BASE_URL="${DGCLAW_BASE_URL:-https://degen.virtuals.io}"
 API_KEY="${DGCLAW_API_KEY:-}"
 DEGENCLAW_ADDRESS="0xd478a8B40372db16cA8045F28C6FE07228F3781A"
