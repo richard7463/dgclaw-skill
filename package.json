@@ -8,10 +8,12 @@
     "apex-liquid": "tsx scripts/apex-liquid-runner.ts",
     "bollinger": "tsx scripts/bollinger-runner.ts",
     "chanlun": "tsx scripts/chanlun-runner.ts",
+    "orb": "tsx scripts/orb-runner.ts",
     "trade": "tsx scripts/trade.ts",
     "100xmira": "tsx scripts/100xmira-runner.ts",
     "100xshort": "tsx scripts/100xshort-runner.ts",
-    "turtle": "tsx scripts/turtle-runner.ts"
+    "turtle": "tsx scripts/turtle-runner.ts",
+    "xyz-rotation": "tsx scripts/xyz-rotation-runner.ts"
   },
   "dependencies": {
     "@nktkas/hyperliquid": "^0.32.2",

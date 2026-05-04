@@ -9,4 +9,6 @@ node_modules/
 .env.chanlun
 .env.turtle
 .env.bollinger
+.env.orb
+.env.xyz-rotation
 .runtime/
